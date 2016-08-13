@@ -6,16 +6,31 @@ use mio::*;
 use mio::tcp::{TcpListener, TcpStream};
 use std::collections::hash_map::HashMap;
 
+enum PeerState {
+    // The initial state when we're waiting for the peer to upgrade their HTTP
+    // connection to the websocket protocol.
+    AwaitingWebSocketUpgrade,
+
+    // The peer is communicating through the websocket protocol now.
+    Upgraded,
+}
+
+struct ConnectedPeer {
+    socket: TcpStream,
+    buffer: Vec<u8>,
+    state: PeerState,
+}
+
 const SERVER: Token = Token(0);
 
 struct GameServer {
     server_socket: TcpListener,
 
-    // Store our connected clients by token
-    clients: HashMap<Token, TcpStream>,
+    // Store our connected peers by token
+    peers: HashMap<Token, ConnectedPeer>,
 
-    // The number of client tokens ever created. We use this to create unique
-    // tokens when clients connect to us.
+    // The number of peer tokens ever created. We use this to create unique
+    // tokens when peers connect to us.
     token_counter: usize,
 }
 
@@ -33,13 +48,13 @@ impl GameServer {
         event_loop.register(&server_socket, SERVER, EventSet::readable(),
                             PollOpt::edge()).unwrap();  
 
-        GameServer { server_socket: server_socket, token_counter: 0, clients: HashMap::new() }
+        GameServer { server_socket: server_socket, token_counter: 0, peers: HashMap::new() }
     }
 
     /**
-     * Create a new, unused client token.
+     * Create a new, unused peer token.
      */
-    fn create_client_token(&mut self) -> Token {
+    fn create_peer_token(&mut self) -> Token {
         self.token_counter += 1;
         assert!(Token(self.token_counter) != SERVER);
 
@@ -54,37 +69,43 @@ impl Handler for GameServer {
     fn ready(&mut self, event_loop: &mut EventLoop<GameServer>, token: Token, _: EventSet) {
         match token {
             SERVER => {
-                let (client_socket, client_addr) = match self.server_socket.accept() {
+                let (peer_socket, peer_addr) = match self.server_socket.accept() {
                     Err(e) => {
-                        println!("Could not accept client connection, got error: {:?}", e);
+                        println!("Could not accept connection, got error: {:?}", e);
                         return;
                     },
                     Ok(None) => unreachable!(),
-                    Ok(Some(client)) => client,
+                    Ok(Some(peer)) => peer,
                 };
 
-                let client_token = self.create_client_token();
+                let peer_token = self.create_peer_token();
 
-                // Add the socket to our client hash, and panic if there's a collision
-                let insert_result = self.clients.insert(client_token, client_socket);
+                // Add the socket to our peer hash, and panic if there's a collision
+                let insert_result = self.peers.insert(
+                    peer_token,
+                    ConnectedPeer {
+                        socket: peer_socket,
+                        buffer: vec![],
+                        state: PeerState::AwaitingWebSocketUpgrade,
+                    });
                 assert!(insert_result.is_none(),
-                        "Client token collision at {:?}", client_token);
+                        "peer token collision at {:?}", peer_token);
 
-                // Start listening on the new client socket
-                event_loop.register(&self.clients[&client_token], client_token,
+                // Start listening on the new peer socket
+                event_loop.register(&self.peers[&peer_token].socket, peer_token,
                                     EventSet::readable(), PollOpt::edge()).unwrap();
 
-                println!("Client connected from {:?}", client_addr);
+                println!("peer connected from {:?}", peer_addr);
             },
-            client_token => {
-                let client_socket = self.clients.get_mut(&client_token).unwrap();
+            peer_token => {
+                let ref mut peer_socket = self.peers.get_mut(&peer_token).unwrap().socket;
 
                 use std::io::Read;
                 let mut buffer: Vec<u8> = vec![];
-                match client_socket.read_to_end(&mut buffer) {
-                    Ok(num_bytes) => println!("Read {} bytes from {:?}", num_bytes, client_socket),
+                match peer_socket.read_to_end(&mut buffer) {
+                    Ok(num_bytes) => println!("Read {} bytes from {:?}", num_bytes, peer_socket),
                     Err(error) => println!("Got error reading from {:?}: {:?}",
-                                           client_socket.peer_addr().unwrap(),
+                                           peer_socket.peer_addr().unwrap(),
                                            error),
                 }
 
