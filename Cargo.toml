@@ -4,4 +4,5 @@ version = "0.1.0"
 authors = ["brownhead <johnsullivan.pem@gmail.com>"]
 
 [dependencies]
-mio = "0.5"
+ws = "0.5.2"
+env_logger = "*"
