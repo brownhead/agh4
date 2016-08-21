@@ -6,3 +6,4 @@ authors = ["brownhead <johnsullivan.pem@gmail.com>"]
 [dependencies]
 ws = "0.5.2"
 env_logger = "*"
+rustc-serialize = "*"

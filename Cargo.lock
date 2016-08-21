@@ -3,6 +3,7 @@ name = "agh4"
 version = "0.1.0"
 dependencies = [
  "env_logger 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc-serialize 0.3.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "ws 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -156,6 +157,11 @@ dependencies = [
 [[package]]
 name = "regex-syntax"
 version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "rustc-serialize"
+version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
